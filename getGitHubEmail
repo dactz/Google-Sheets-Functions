@@ -1,0 +1,51 @@
+// Function to fetch email from a GitHub profile URL
+function getGitHubEmail(gitHubUrl) {
+  const options = {
+    method: "GET",
+    headers: {
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+      "accept-language": "en-US,en;q=0.9",
+      "upgrade-insecure-requests": "1"
+    },
+    muteHttpExceptions: true
+  };
+  
+  try {
+    // Extract the GitHub username from the provided URL
+    const match = gitHubUrl.match(/^https:\/\/github\.com\/([^\/]+)/);
+    if (!match) {
+      return "Invalid GitHub URL";
+    }
+    const username = match[1];
+    const repoUrl = `https://github.com/${username}?tab=repositories`;
+
+    // Fetch the user's repositories page
+    const repoResponse = UrlFetchApp.fetch(repoUrl, options);
+    const repoHtml = repoResponse.getContentText();
+
+    // Parse the repositories HTML to find public repo links
+    const repoLinks = repoHtml.match(/href="\/[^\/]+\/[^\/]+"/g).map(link => {
+      return `https://github.com${link.replace('href="', '').replace('"', '')}/commit/master.patch`;
+    });
+
+    // Loop through each repository's latest commit to find an email
+    for (const commitUrl of repoLinks) {
+      const commitResponse = UrlFetchApp.fetch(commitUrl, options);
+      const commitText = commitResponse.getContentText();
+      const emailMatch = commitText.match(/[\w.]+@\S+\.[a-zA-Z]+/g);
+
+      // Return the first valid email found (excluding noreply emails)
+      if (emailMatch) {
+        const validEmail = emailMatch.find(email => !email.includes("users.noreply.github.com"));
+        if (validEmail) {
+          return validEmail;
+        }
+      }
+    }
+    
+    return "No email found";
+    
+  } catch (error) {
+    return `Error: ${error.message}`;
+  }
+}
