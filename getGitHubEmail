@@ -1,15 +1,8 @@
-// Function to fetch email from a GitHub profile URL
+// Function to fetch email from a GitHub profile URL using the GitHub API
 function getGitHubEmail(gitHubUrl) {
-  const options = {
-    method: "GET",
-    headers: {
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-      "accept-language": "en-US,en;q=0.9",
-      "upgrade-insecure-requests": "1"
-    },
-    muteHttpExceptions: true
-  };
-  
+  const baseApiUrl = "https://api.github.com";
+  const token = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"; // Optional: Add a personal access token here if rate-limiting becomes an issue
+
   try {
     // Extract the GitHub username from the provided URL
     const match = gitHubUrl.match(/^https:\/\/github\.com\/([^\/]+)/);
@@ -17,34 +10,52 @@ function getGitHubEmail(gitHubUrl) {
       return "Invalid GitHub URL";
     }
     const username = match[1];
-    const repoUrl = `https://github.com/${username}?tab=repositories`;
-
-    // Fetch the user's repositories page
-    const repoResponse = UrlFetchApp.fetch(repoUrl, options);
-    const repoHtml = repoResponse.getContentText();
-
-    // Parse the repositories HTML to find public repo links
-    const repoLinks = repoHtml.match(/href="\/[^\/]+\/[^\/]+"/g).map(link => {
-      return `https://github.com${link.replace('href="', '').replace('"', '')}/commit/master.patch`;
+    
+    // Step 1: Fetch public repositories for the user
+    const repoUrl = `${baseApiUrl}/users/${username}/repos`;
+    const repoResponse = UrlFetchApp.fetch(repoUrl, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json"
+      },
+      muteHttpExceptions: true
     });
 
-    // Loop through each repository's latest commit to find an email
-    for (const commitUrl of repoLinks) {
-      const commitResponse = UrlFetchApp.fetch(commitUrl, options);
-      const commitText = commitResponse.getContentText();
-      const emailMatch = commitText.match(/[\w.]+@\S+\.[a-zA-Z]+/g);
+    if (repoResponse.getResponseCode() !== 200) {
+      return `Error fetching repositories: ${repoResponse.getContentText()}`;
+    }
 
-      // Return the first valid email found (excluding noreply emails)
-      if (emailMatch) {
-        const validEmail = emailMatch.find(email => !email.includes("users.noreply.github.com"));
-        if (validEmail) {
-          return validEmail;
+    const repos = JSON.parse(repoResponse.getContentText());
+
+    // Step 2: Loop through each repository to find the latest commit
+    for (const repo of repos) {
+      const commitsUrl = `${repo.commits_url.replace('{/sha}', '')}?per_page=1`;
+      const commitResponse = UrlFetchApp.fetch(commitsUrl, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json"
+        },
+        muteHttpExceptions: true
+      });
+
+      if (commitResponse.getResponseCode() !== 200) {
+        continue; // Skip this repository if there's an issue fetching the commits
+      }
+
+      const commits = JSON.parse(commitResponse.getContentText());
+      if (commits.length > 0) {
+        const commit = commits[0];
+        const email = commit.commit.author.email;
+
+        // Exclude GitHub's noreply emails
+        if (!email.includes("noreply.github.com")) {
+          return email;
         }
       }
     }
-    
+
     return "No email found";
-    
+
   } catch (error) {
     return `Error: ${error.message}`;
   }
