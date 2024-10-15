@@ -60,3 +60,44 @@ function getGitHubEmail(gitHubUrl) {
     return `Error: ${error.message}`;
   }
 }
+// Function to get remaining API requests for the GitHub API
+function getGitHubApiLimit() {
+  const token = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"; // Replace with your GitHub personal access token (optional)
+  const apiUrl = "https://api.github.com/rate_limit";
+  
+  const options = {
+    method: "GET",
+    headers: {
+      Authorization: `token ${token}`, // Authenticated request to get higher rate limits
+      Accept: "application/vnd.github.v3+json"
+    },
+    muteHttpExceptions: true
+  };
+
+  try {
+    // Fetch rate limit data from GitHub API
+    const response = UrlFetchApp.fetch(apiUrl, options);
+    
+    if (response.getResponseCode() !== 200) {
+      return `Error: Unable to fetch rate limit (${response.getResponseCode()})`;
+    }
+    
+    const data = JSON.parse(response.getContentText());
+    
+    // Extract core API rate limit information
+    const core = data.resources.core;
+    const remaining = core.remaining;    // How many requests are left
+    const resetTime = new Date(core.reset * 1000);  // Convert Unix timestamp to JavaScript Date object
+    
+    // Calculate time remaining before reset
+    const now = new Date();
+    const minutesLeft = Math.floor((resetTime - now) / 60000);  // Convert milliseconds to minutes
+    
+    // Return the number of remaining requests and time until reset
+    return `Requests remaining: ${remaining}, Reset in: ${minutesLeft} minutes`;
+    
+  } catch (error) {
+    return `Error: ${error.message}`;
+  }
+}
+
