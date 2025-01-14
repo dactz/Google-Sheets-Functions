@@ -100,4 +100,32 @@ function getGitHubApiLimit() {
     return `Error: ${error.message}`;
   }
 }
+function getGitHubAccountByEmail(email) {
+  // Validate email input
+  if (!email || typeof email !== 'string') {
+    return 'Invalid email';
+  }
+
+  // GitHub Search API endpoint
+  const apiUrl = `https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`;
+
+  // GitHub Personal Access Token (optional to avoid rate limits)
+  const token = 'your_github_token'; // replace 'your_github_token' with your GitHub token if desired
+  const headers = token ? { 'Authorization': `token ${token}` } : {};
+
+  try {
+    const response = UrlFetchApp.fetch(apiUrl, { headers });
+    const data = JSON.parse(response.getContentText());
+
+    // Check if users are found
+    if (data.total_count > 0 && data.items.length > 0) {
+      // Return the first matching GitHub username
+      return data.items[0].html_url;
+    } else {
+      return 'No GitHub account found';
+    }
+  } catch (error) {
+    return 'Error fetching data';
+  }
+}
 
