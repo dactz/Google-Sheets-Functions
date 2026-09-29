@@ -1,0 +1,38 @@
+```javascript
+function EMAIL_NAME(email) {
+
+  if (!email) {
+    return "";
+  }
+
+  const apiKey = PropertiesService
+    .getScriptProperties()
+    .getProperty("HUNTER_API_KEY");
+
+  if (!apiKey) {
+    throw new Error("HUNTER_API_KEY is not configured.");
+  }
+
+  const url =
+    "https://api.hunter.io/v2/people/find" +
+    "?email=" + encodeURIComponent(email) +
+    "&api_key=" + encodeURIComponent(apiKey);
+
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    muteHttpExceptions: true
+  });
+
+  if (response.getResponseCode() === 404) {
+    return "NOT FOUND";
+  }
+
+  if (response.getResponseCode() !== 200) {
+    return "ERROR";
+  }
+
+  const json = JSON.parse(response.getContentText());
+
+  return json.data?.name?.fullName || "NAME NOT FOUND";
+}
+```
