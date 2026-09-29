@@ -1,0 +1,156 @@
+function getSemanticScholar2(name) {
+
+  if (!name || String(name).trim() === "") {
+    return [["No name provided"]];
+  }
+
+  name = String(name).trim();
+
+  try {
+
+    // ------------------------------------------------
+    // 1. Search for the author
+    // ------------------------------------------------
+
+    const searchUrl =
+      "https://api.semanticscholar.org/graph/v1/author/search" +
+      "?query=" + encodeURIComponent(name) +
+      "&limit=5" +
+      "&fields=authorId,name,url,affiliations,homepage,paperCount,citationCount,hIndex";
+
+    const searchOptions = {
+      method: "get",
+      headers: {
+        "accept": "application/json"
+      },
+      muteHttpExceptions: true
+    };
+
+    const searchResponse =
+      UrlFetchApp.fetch(searchUrl, searchOptions);
+
+    const searchStatus =
+      searchResponse.getResponseCode();
+
+    if (searchStatus === 429) {
+      return [["RATE LIMIT"]];
+    }
+
+    if (searchStatus !== 200) {
+      return [["API ERROR " + searchStatus]];
+    }
+
+    const searchData =
+      JSON.parse(searchResponse.getContentText());
+
+    if (!searchData.data ||
+        searchData.data.length === 0) {
+      return [["NO MATCH"]];
+    }
+
+    // Use the first Semantic Scholar result
+    const author = searchData.data[0];
+
+    // ------------------------------------------------
+    // 2. Get the author's papers
+    // ------------------------------------------------
+
+    const papersUrl =
+      "https://api.semanticscholar.org/graph/v1/author/" +
+      author.authorId +
+      "/papers" +
+      "?limit=20" +
+      "&fields=title,year,fieldsOfStudy,citationCount,url";
+
+    const papersResponse =
+      UrlFetchApp.fetch(papersUrl, searchOptions);
+
+    const papersStatus =
+      papersResponse.getResponseCode();
+
+    if (papersStatus === 429) {
+      return [["RATE LIMIT"]];
+    }
+
+    if (papersStatus !== 200) {
+      return [["PAPER API ERROR " + papersStatus]];
+    }
+
+    const papersData =
+      JSON.parse(papersResponse.getContentText());
+
+    // ------------------------------------------------
+    // 3. Aggregate research topics
+    // ------------------------------------------------
+
+    const topicCounts = {};
+
+    if (papersData.data) {
+
+      papersData.data.forEach(function(paper) {
+
+        if (!paper.fieldsOfStudy) {
+          return;
+        }
+
+        paper.fieldsOfStudy.forEach(function(field) {
+
+          if (!field) {
+            return;
+          }
+
+          if (!topicCounts[field]) {
+            topicCounts[field] = 0;
+          }
+
+          topicCounts[field]++;
+        });
+
+      });
+
+    }
+
+    // Sort topics by frequency
+    const topics = Object.keys(topicCounts)
+      .sort(function(a, b) {
+        return topicCounts[b] - topicCounts[a];
+      })
+      .slice(0, 8);
+
+    const researchTopics =
+      topics.join(", ");
+
+    // ------------------------------------------------
+    // 4. Format affiliation
+    // ------------------------------------------------
+
+    const affiliations =
+      author.affiliations
+        ? author.affiliations.join(", ")
+        : "";
+
+    // ------------------------------------------------
+    // 5. Return profile
+    // ------------------------------------------------
+
+    return [[
+      author.name || "",
+      author.url || "",
+      affiliations,
+      author.homepage || "",
+      author.paperCount || 0,
+      author.citationCount || 0,
+      author.hIndex || 0,
+      researchTopics,
+      author.authorId || ""
+    ]];
+
+  } catch (error) {
+
+    return [[
+      "ERROR: " + error.message
+    ]];
+
+  }
+}
+}
