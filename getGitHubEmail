@@ -129,3 +129,191 @@ function getGitHubAccountByEmail(email) {
   }
 }
 
+function getGitHubEmail2(gitHubUrl) {
+
+  // =========================================================
+  // SETTINGS
+  // =========================================================
+
+  const TOKEN = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN";
+
+  // Maximum number of repositories to inspect
+  const MAX_REPOS = 10;
+
+  // Only inspect the 10 most recent commits per repository
+  const COMMITS_PER_REPO = 10;
+
+
+  // =========================================================
+  // VALIDATE URL
+  // =========================================================
+
+  if (!gitHubUrl) {
+    return "No GitHub URL";
+  }
+
+  const match = String(gitHubUrl).match(
+    /^https?:\/\/(?:www\.)?github\.com\/([^\/?#]+)/i
+  );
+
+  if (!match) {
+    return "Invalid GitHub URL";
+  }
+
+  const username = match[1];
+
+
+  // =========================================================
+  // API OPTIONS
+  // =========================================================
+
+  const headers = {
+    "Accept": "application/vnd.github+json"
+  };
+
+  if (
+    TOKEN &&
+    TOKEN !== "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"
+  ) {
+    headers["Authorization"] = "Bearer " + TOKEN;
+  }
+
+  const options = {
+    method: "get",
+    headers: headers,
+    muteHttpExceptions: true
+  };
+
+
+  try {
+
+    // =======================================================
+    // GET 10 MOST RECENTLY ACTIVE REPOSITORIES
+    // =======================================================
+
+    const reposUrl =
+      "https://api.github.com/users/" +
+      encodeURIComponent(username) +
+      "/repos?type=all&sort=pushed&direction=desc&per_page=" +
+      MAX_REPOS;
+
+    const reposResponse = UrlFetchApp.fetch(
+      reposUrl,
+      options
+    );
+
+    const repoStatus = reposResponse.getResponseCode();
+
+    if (repoStatus === 403 || repoStatus === 429) {
+      return "GitHub API rate limit reached";
+    }
+
+    if (repoStatus !== 200) {
+      return "GitHub error: " + repoStatus;
+    }
+
+    const repos = JSON.parse(
+      reposResponse.getContentText()
+    );
+
+    if (!repos || repos.length === 0) {
+      return "No public repositories found";
+    }
+
+
+    // =======================================================
+    // COUNT EMAILS
+    // =======================================================
+
+    const emailCounts = {};
+
+
+    // =======================================================
+    // CHECK EACH REPOSITORY
+    // =======================================================
+
+    for (const repo of repos) {
+
+      const owner = repo.owner.login;
+      const repoName = repo.name;
+
+      const commitsUrl =
+        "https://api.github.com/repos/" +
+        encodeURIComponent(owner) +
+        "/" +
+        encodeURIComponent(repoName) +
+        "/commits?per_page=" +
+        COMMITS_PER_REPO;
+
+      const commitResponse = UrlFetchApp.fetch(
+        commitsUrl,
+        options
+      );
+
+      // Skip repositories where commits can't be accessed
+      if (commitResponse.getResponseCode() !== 200) {
+        continue;
+      }
+
+      const commits = JSON.parse(
+        commitResponse.getContentText()
+      );
+
+      if (!commits || commits.length === 0) {
+        continue;
+      }
+
+
+      // =====================================================
+      // COUNT COMMIT EMAILS
+      // =====================================================
+
+      for (const commit of commits) {
+
+        if (
+          !commit.commit ||
+          !commit.commit.author ||
+          !commit.commit.author.email
+        ) {
+          continue;
+        }
+
+        const email =
+          commit.commit.author.email
+            .toLowerCase()
+            .trim();
+
+        // Ignore GitHub noreply addresses
+        if (
+          !email ||
+          email.includes("noreply.github.com")
+        ) {
+          continue;
+        }
+
+        emailCounts[email] =
+          (emailCounts[email] || 0) + 1;
+      }
+    }
+
+
+    // =======================================================
+    // FIND MOST COMMON EMAIL
+    // =======================================================
+
+    const rankedEmails = Object.entries(emailCounts)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (rankedEmails.length === 0) {
+      return "No public email found";
+    }
+
+    return rankedEmails[0][0];
+
+
+  } catch (error) {
+
+    return "Error: " + error.message;
+
+  }
+}
