@@ -1,0 +1,186 @@
+/**
+ * Apollo People Enrichment using the individual people/match endpoint.
+ *
+ * Usage in Google Sheets:
+ *   =getApolloProfiles2(B2:B11)
+ *
+ * Input:
+ *   Column/range containing email addresses
+ *
+ * Output:
+ *   Email | Name | LinkedIn URL | Job Title | Company | Location | Match Confidence
+ */
+
+function getApolloProfiles2(emails) {
+
+  const APOLLO_API_KEY = "YOUR_APOLLO_API_KEY";
+
+  if (!APOLLO_API_KEY || APOLLO_API_KEY === "YOUR_APOLLO_API_KEY") {
+    return [["ERROR", "Add your Apollo API key to the script"]];
+  }
+
+  // Flatten the input range and remove blank cells
+  const emailList = emails
+    .flat()
+    .map(function(email) {
+      return String(email).trim();
+    })
+    .filter(function(email) {
+      return email !== "";
+    });
+
+  if (emailList.length === 0) {
+    return [["No email addresses provided"]];
+  }
+
+  const results = [];
+
+  // Header row
+  results.push([
+    "Email",
+    "Name",
+    "LinkedIn URL",
+    "Job Title",
+    "Company",
+    "Location",
+    "Match Confidence"
+  ]);
+
+  emailList.forEach(function(email) {
+
+    try {
+
+      const url =
+        "https://api.apollo.io/api/v1/people/match" +
+        "?email=" + encodeURIComponent(email) +
+        "&reveal_personal_emails=false" +
+        "&reveal_phone_number=false";
+
+      const options = {
+        method: "post",
+        headers: {
+          "x-api-key": APOLLO_API_KEY,
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+          "accept": "application/json"
+        },
+        muteHttpExceptions: true
+      };
+
+      const response = UrlFetchApp.fetch(url, options);
+      const statusCode = response.getResponseCode();
+      const responseText = response.getContentText();
+
+      // Rate limit
+      if (statusCode === 429) {
+        results.push([
+          email,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "RATE LIMIT"
+        ]);
+        return;
+      }
+
+      // Unauthorized / invalid API key
+      if (statusCode === 401) {
+        results.push([
+          email,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "INVALID API KEY"
+        ]);
+        return;
+      }
+
+      // Permission / plan issue
+      if (statusCode === 403) {
+        results.push([
+          email,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "NO API ACCESS"
+        ]);
+        return;
+      }
+
+      // Other API error
+      if (statusCode !== 200) {
+        results.push([
+          email,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "API ERROR " + statusCode
+        ]);
+        return;
+      }
+
+      const data = JSON.parse(responseText);
+      const person = data.person;
+
+      // Apollo couldn't find a person
+      if (!person) {
+        results.push([
+          email,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "NO MATCH"
+        ]);
+        return;
+      }
+
+      const location = [
+        person.city || "",
+        person.state || "",
+        person.country || ""
+      ]
+      .filter(function(value) {
+        return value !== "";
+      })
+      .join(", ");
+
+      results.push([
+        email,
+        person.name || "",
+        person.linkedin_url || "",
+        person.title || "",
+        person.organization
+          ? person.organization.name || ""
+          : "",
+        location,
+        person.match_confidence || ""
+      ]);
+
+    } catch (error) {
+
+      results.push([
+        email,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "ERROR: " + error.message
+      ]);
+
+    }
+
+  });
+
+  return results;
+}
